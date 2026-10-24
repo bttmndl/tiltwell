@@ -33,12 +33,7 @@ type Spark = {
 type Palette = { body: string; lite: string; dark: string; seam: string };
 
 const PALETTE: Palette[] = [
-  { body: "#c44536", lite: "#f3b2a4", dark: "#6e2218", seam: "#8d2c22" },
-  { body: "#e2b15a", lite: "#ffe7b8", dark: "#8a6420", seam: "#b18438" },
-  { body: "#f4efe6", lite: "#ffffff", dark: "#b7ad9c", seam: "#d5cbb8" },
-  { body: "#2f6d52", lite: "#9ed4b8", dark: "#143528", seam: "#1d4d38" },
-  { body: "#2c4663", lite: "#a9c0d4", dark: "#152433", seam: "#1b334c" },
-  { body: "#d4784a", lite: "#f6c7ab", dark: "#7a3c20", seam: "#a85a32" },
+  { body: "#f6f3ec", lite: "#ffffff", dark: "#c9c2b4", seam: "#b7ad9c" },
 ];
 
 const BALL_COUNT = 11;
@@ -270,11 +265,10 @@ export class WellSim {
     if (!this.haveLayout) return;
     if (this.balls.length >= MAX_BALLS) return;
     const b = this.bounds;
-    const base = this.baseRadius();
-    const r = base * (0.78 + Math.random() * 0.4);
+    const r = this.baseRadius();
     const px = clamp(x ?? (b.left + b.right) / 2, b.left + r, b.right - r);
     const py = clamp(y ?? b.top + r + 6, b.top + r, b.bottom - r);
-    this.balls.push(this.makeBall(px, py, r, Math.floor(Math.random() * PALETTE.length), (Math.random() - 0.5) * 80, 60));
+    this.balls.push(this.makeBall(px, py, r, 0, (Math.random() - 0.5) * 80, 60));
   }
 
   shake() {
@@ -335,7 +329,7 @@ export class WellSim {
 
   private baseRadius() {
     const w = this.bounds.right - this.bounds.left;
-    return clamp(w * 0.052, 16, 34);
+    return clamp(w * 0.046, 18, 30);
   }
 
   private makeBall(x: number, y: number, r: number, color: number, vx: number, vy: number): Ball {
@@ -362,15 +356,11 @@ export class WellSim {
 
   private spawnFalling() {
     const b = this.bounds;
-    const base = this.baseRadius();
-    const hero = !this.heroSpawned;
-    this.heroSpawned = true;
-    const r = base * (hero ? 1.22 : 0.7 + Math.random() * 0.42);
+    const r = this.baseRadius();
     const span = Math.max(8, b.right - b.left - r * 2);
     const x = b.left + r + Math.random() * span;
     const y = b.top + r + 1;
-    const color = hero ? 0 : 1 + Math.floor(Math.random() * (PALETTE.length - 1));
-    this.balls.push(this.makeBall(x, y, r, color, (Math.random() - 0.5) * 140, 50 + Math.random() * 90));
+    this.balls.push(this.makeBall(x, y, r, 0, (Math.random() - 0.5) * 140, 50 + Math.random() * 90));
   }
 
   private bind() {
@@ -922,9 +912,9 @@ export class WellSim {
     }
 
     const r = b.r;
-    const grd = ctx.createRadialGradient(-r * 0.34, -r * 0.4, r * 0.08, r * 0.08, r * 0.12, r);
+    const grd = ctx.createRadialGradient(-r * 0.28, -r * 0.32, r * 0.05, 0, 0, r * 1.05);
     grd.addColorStop(0, pal.lite);
-    grd.addColorStop(0.45, pal.body);
+    grd.addColorStop(0.42, pal.body);
     grd.addColorStop(1, pal.dark);
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -933,25 +923,26 @@ export class WellSim {
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(0, 0, r - 0.5, 0, Math.PI * 2);
+    ctx.arc(0, 0, r - 0.4, 0, Math.PI * 2);
     ctx.clip();
     ctx.rotate(b.angle);
-    ctx.fillStyle = pal.seam;
-    ctx.globalAlpha = 0.92;
-    ctx.fillRect(-r, -r * 0.15, r * 2, r * 0.3);
-    ctx.globalAlpha = 0.4;
-    ctx.fillStyle = pal.lite;
-    ctx.fillRect(-r, -r * 0.15, r * 2, r * 0.055);
+    ctx.strokeStyle = pal.seam;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = Math.max(1, r * 0.045);
+    ctx.beginPath();
+    ctx.moveTo(-r, 0);
+    ctx.lineTo(r, 0);
+    ctx.stroke();
     ctx.restore();
 
     ctx.beginPath();
-    ctx.ellipse(-r * 0.28, -r * 0.34, r * 0.24, r * 0.13, -0.7, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.66)";
+    ctx.ellipse(-r * 0.22, -r * 0.28, r * 0.34, r * 0.2, -0.5, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(0, 0, r - 0.6, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(0,0,0,0.2)";
+    ctx.arc(0, 0, r - 0.4, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(90,80,64,0.18)";
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.restore();
