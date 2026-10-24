@@ -21,6 +21,7 @@ type Ball = {
   squashY: number;
   guard: number;
   sink: number;
+  exit: "left" | "right" | null;
 };
 
 type Spark = {
@@ -278,11 +279,15 @@ export class WellSim {
     const s = this.holeSize();
     const r = this.baseRadius();
     const speed = clamp(ball.speed, 200, 460);
-    const made = this.makeBall(s * 0.28, s * 0.28, r, 0, speed * 0.74, speed * 0.74);
+    const right = ball.side === "right";
+    const made = right
+      ? this.makeBall(this.bounds.right - s * 0.28, this.bounds.top + s * 0.28, r, 0, -speed * 0.74, speed * 0.74)
+      : this.makeBall(this.bounds.left + s * 0.28, this.bounds.top + s * 0.28, r, 0, speed * 0.74, speed * 0.74);
     made.spin = ball.spin;
     made.angle = ball.angle;
     made.guard = 0.55;
     made.sink = 0;
+    made.exit = right ? "right" : "left";
     this.balls.push(made);
   }
 
@@ -374,6 +379,7 @@ export class WellSim {
       squashY: 1,
       guard: 0,
       sink: 0,
+      exit: null,
     };
   }
 
@@ -387,8 +393,9 @@ export class WellSim {
     const r = this.baseRadius();
     const s = this.holeSize();
     const y = b.top + r + 6;
-    const minX = Math.min(b.right - r * 2, s + 4);
-    const x = minX + Math.random() * Math.max(4, b.right - r - minX);
+    const minX = b.left + s + 4;
+    const maxX = b.right - s - 4;
+    const x = minX + Math.random() * Math.max(4, maxX - minX);
     this.balls.push(this.makeBall(x, y, r, 0, (Math.random() - 0.5) * 140, 50 + Math.random() * 90));
   }
 
@@ -663,44 +670,63 @@ export class WellSim {
     return this.baseRadius() * 2.35;
   }
 
-  private overLip(b: Ball) {
-    return b.x + b.y < this.holeSize() - b.r * 0.2;
+  private cornerOf(b: Ball): "left" | "right" | null {
+    const s = this.holeSize() - b.r * 0.2;
+    const { left, right, top } = this.bounds;
+    const y = b.y - top;
+    if (b.x - left + y < s) return "left";
+    if (right - b.x + y < s) return "right";
+    return null;
   }
 
   private drain(dt: number) {
     const next: Ball[] = [];
     const s = this.holeSize();
+    const { left, right, top } = this.bounds;
     for (const b of this.balls) {
       if (b.guard > 0) {
         b.guard = Math.max(0, b.guard - dt);
         b.sink = Math.max(0, b.sink - dt / 0.28);
         if (b.guard <= 0) {
           b.sink = 0;
-          if (b.x + b.y < s + b.r * 0.35) {
-            const push = (s + b.r * 0.45 - b.x - b.y) / 2;
+          b.exit = null;
+          if (b.x - left + (b.y - top) < s + b.r * 0.35) {
+            const push = (s + b.r * 0.45 - (b.x - left) - (b.y - top)) / 2;
             b.x += push;
+            b.y += push;
+          }
+          if (right - b.x + (b.y - top) < s + b.r * 0.35) {
+            const push = (s + b.r * 0.45 - (right - b.x) - (b.y - top)) / 2;
+            b.x -= push;
             b.y += push;
           }
         }
         next.push(b);
         continue;
       }
-      const leaving = b.sink > 0 || this.overLip(b);
-      if (!leaving) {
+      const corner = b.exit ?? this.cornerOf(b);
+      if (!corner) {
         next.push(b);
         continue;
       }
+      b.exit = corner;
       b.sink = Math.min(1, (b.sink || 0.04) + dt / 0.36);
-      b.x += (-b.r * 0.45 - b.x) * Math.min(1, dt * 3.2);
-      b.y += (-b.r * 0.45 - b.y) * Math.min(1, dt * 3.2);
+      const aimX = corner === "right" ? right + b.r * 0.45 : left - b.r * 0.45;
+      const aimY = top - b.r * 0.45;
+      b.x += (aimX - b.x) * Math.min(1, dt * 3.2);
+      b.y += (aimY - b.y) * Math.min(1, dt * 3.2);
       b.vx *= 0.9;
       b.vy *= 0.9;
       if (b.sink < 1) {
         next.push(b);
         continue;
       }
-      const payload = { spin: b.spin, speed: Math.max(220, Math.hypot(b.vx, b.vy) + 260), angle: b.angle };
-      this.onPass?.(payload);
+      this.onPass?.({
+        spin: b.spin,
+        speed: Math.max(220, Math.hypot(b.vx, b.vy) + 260),
+        angle: b.angle,
+        side: corner,
+      });
     }
     this.balls = next;
   }
@@ -709,15 +735,17 @@ export class WellSim {
     const { left, top, right, bottom } = this.bounds;
     for (const b of this.balls) {
       if (b.sink > 0) continue;
-      const open = b.guard > 0 || b.x + b.y < this.holeSize();
-      if (!open && b.x < left + b.r) {
+      const s = this.holeSize();
+      const leftOpen = (b.guard > 0 && b.exit !== "right") || b.x - left + (b.y - top) < s;
+      const rightOpen = (b.guard > 0 && b.exit === "right") || right - b.x + (b.y - top) < s;
+      if (!leftOpen && b.x < left + b.r) {
         b.x = left + b.r;
         this.bounceWall(b, 1, 0, e, dt, friction);
-      } else if (b.x > right - b.r) {
+      } else if (!rightOpen && b.x > right - b.r) {
         b.x = right - b.r;
         this.bounceWall(b, -1, 0, e, dt, friction);
       }
-      if (!open && b.y < top + b.r) {
+      if (!leftOpen && !rightOpen && b.y < top + b.r) {
         b.y = top + b.r;
         this.bounceWall(b, 0, 1, e, dt, friction);
       } else if (b.y > bottom - b.r) {

@@ -4,6 +4,7 @@ export type PassedBall = {
   spin: number;
   speed: number;
   angle: number;
+  side: "left" | "right";
 };
 
 export function connectTable(handlers: {
@@ -31,6 +32,7 @@ export function connectTable(handlers: {
       spin: Number(ball.spin) || 0,
       speed: Number(ball.speed) || 240,
       angle: Number(ball.angle) || 0,
+      side: ball.side === "right" ? "right" : "left",
     });
   };
 
