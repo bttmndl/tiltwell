@@ -113,6 +113,7 @@ export class WellSim {
   private readonly onHud: WellSimOptions["onHud"];
   private readonly onPass: WellSimOptions["onPass"];
   private holeOpen = false;
+  private pocket: { ball: PassedBall; age: number }[] = [];
 
   private balls: Ball[] = [];
   private sparks: Spark[] = [];
@@ -275,10 +276,10 @@ export class WellSim {
   arrive(ball: PassedBall) {
     if (!this.haveLayout) return;
     if (this.balls.length >= MAX_BALLS + 6) return;
-    const h = this.holeCenter();
+    const s = this.holeSize();
     const r = this.baseRadius();
-    const speed = clamp(ball.speed, 180, 420);
-    const made = this.makeBall(h.x, h.y, r, 0, speed * 0.72, speed * 0.62);
+    const speed = clamp(ball.speed, 200, 460);
+    const made = this.makeBall(s * 0.28, s * 0.28, r, 0, speed * 0.74, speed * 0.74);
     made.spin = ball.spin;
     made.angle = ball.angle;
     made.guard = 0.7;
@@ -385,9 +386,10 @@ export class WellSim {
   private spawnFalling() {
     const b = this.bounds;
     const r = this.baseRadius();
-    const span = Math.max(8, b.right - b.left - r * 2);
-    const x = b.left + r + Math.random() * span;
-    const y = b.top + r + 1;
+    const s = this.holeSize();
+    const y = b.top + r + 6;
+    const minX = Math.min(b.right - r * 2, s + 4);
+    const x = minX + Math.random() * Math.max(4, b.right - r - minX);
     this.balls.push(this.makeBall(x, y, r, 0, (Math.random() - 0.5) * 140, 50 + Math.random() * 90));
   }
 
@@ -658,68 +660,78 @@ export class WellSim {
     }
   }
 
-  private holeCenter() {
-    const r = Math.max(36, this.baseRadius() * 1.6);
-    return { x: r * 0.78, y: r * 0.78, r };
+  private holeSize() {
+    return Math.max(132, this.baseRadius() * 4.8);
   }
 
-  private nearTrayCorner(b: Ball) {
-    const h = this.holeCenter();
-    return Math.hypot(b.x - h.x, b.y - h.y) < h.r * 0.62;
+  private overLip(b: Ball) {
+    return b.x + b.y < this.holeSize() - b.r * 0.2;
   }
 
   private drain(dt: number) {
-    const h = this.holeCenter();
     const next: Ball[] = [];
+    const s = this.holeSize();
     for (const b of this.balls) {
       if (b.guard > 0) {
         b.guard = Math.max(0, b.guard - dt);
-        b.sink = Math.max(0, b.sink - dt / 0.34);
-        if (b.guard <= 0) b.sink = 0;
+        b.sink = Math.max(0, b.sink - dt / 0.28);
+        if (b.guard <= 0) {
+          b.sink = 0;
+          if (b.x + b.y < s + b.r * 0.35) {
+            const push = (s + b.r * 0.45 - b.x - b.y) / 2;
+            b.x += push;
+            b.y += push;
+          }
+        }
         next.push(b);
         continue;
       }
-      const leaving = b.sink > 0 || (this.holeOpen && this.nearTrayCorner(b));
+      const leaving = b.sink > 0 || this.overLip(b);
       if (!leaving) {
         next.push(b);
         continue;
       }
-      b.sink = Math.min(1, (b.sink || 0.01) + dt / 0.28);
-      b.x += (h.x - b.x) * Math.min(1, dt * 8);
-      b.y += (h.y - b.y) * Math.min(1, dt * 8);
-      b.vx *= 0.5;
-      b.vy *= 0.5;
+      b.sink = Math.min(1, (b.sink || 0.04) + dt / 0.22);
+      b.x += (4 - b.x) * Math.min(1, dt * 9);
+      b.y += (4 - b.y) * Math.min(1, dt * 9);
+      b.vx *= 0.42;
+      b.vy *= 0.42;
       if (b.sink < 1) {
         next.push(b);
         continue;
       }
-      const sent = this.onPass?.({ spin: b.spin, speed: Math.hypot(b.vx, b.vy) + 220, angle: b.angle }) ?? false;
-      if (!sent) {
-        b.sink = 0;
-        b.guard = 0.55;
-        b.x = h.x + h.r * 0.9;
-        b.y = h.y + h.r * 0.9;
-        b.vx = 220;
-        b.vy = 180;
-        next.push(b);
-      }
+      const payload = { spin: b.spin, speed: Math.max(220, Math.hypot(b.vx, b.vy) + 260), angle: b.angle };
+      if (!this.onPass?.(payload)) this.pocket.push({ ball: payload, age: 0 });
     }
     this.balls = next;
+    this.flushPocket(dt);
+  }
+
+  private flushPocket(dt: number) {
+    if (this.pocket.length === 0) return;
+    const stay: { ball: PassedBall; age: number }[] = [];
+    for (const item of this.pocket) {
+      item.age += dt;
+      if (this.onPass?.(item.ball)) continue;
+      if (item.age > 1.15) this.arrive(item.ball);
+      else stay.push(item);
+    }
+    this.pocket = stay;
   }
 
   private solveWalls(e: number, dt: number, friction: boolean) {
     const { left, top, right, bottom } = this.bounds;
     for (const b of this.balls) {
       if (b.sink > 0) continue;
-      const mouth = this.holeOpen && (b.guard > 0 || b.sink > 0 || this.nearTrayCorner(b));
-      if (!mouth && b.x < left + b.r) {
+      const open = b.guard > 0 || b.x + b.y < this.holeSize();
+      if (!open && b.x < left + b.r) {
         b.x = left + b.r;
         this.bounceWall(b, 1, 0, e, dt, friction);
       } else if (b.x > right - b.r) {
         b.x = right - b.r;
         this.bounceWall(b, -1, 0, e, dt, friction);
       }
-      if (!mouth && b.y < top + b.r) {
+      if (!open && b.y < top + b.r) {
         b.y = top + b.r;
         this.bounceWall(b, 0, 1, e, dt, friction);
       } else if (b.y > bottom - b.r) {
@@ -854,18 +866,30 @@ export class WellSim {
 
   private drawHole() {
     const ctx = this.ctx;
-    const h = this.holeCenter();
+    const s = this.holeSize();
     ctx.save();
     ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
-    const pit = ctx.createRadialGradient(h.x - h.r * 0.2, h.y - h.r * 0.25, h.r * 0.08, h.x, h.y, h.r);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(s, 0);
+    ctx.lineTo(0, s);
+    ctx.closePath();
+    const pit = ctx.createLinearGradient(0, 0, s, s);
     pit.addColorStop(0, "#000000");
-    pit.addColorStop(0.72, "#141210");
-    pit.addColorStop(1, this.holeOpen ? "#6a5030" : "#2c261e");
+    pit.addColorStop(0.72, "#070808");
+    pit.addColorStop(1, "#1a140e");
     ctx.fillStyle = pit;
     ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = this.holeOpen ? "#c6a15b" : "#5c4c36";
+    ctx.beginPath();
+    ctx.moveTo(s, 0);
+    ctx.lineTo(0, s);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#2a2118";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s - 7, 5);
+    ctx.lineTo(5, s - 7);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(212,176,114,0.85)";
     ctx.stroke();
     ctx.restore();
   }
