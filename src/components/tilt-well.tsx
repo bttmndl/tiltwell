@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw, Smartphone, Volume2, VolumeX, Waves } from "lucide-react";
 import { WellSim, type HudSnapshot } from "@/lib/well-sim";
+import { connectTable } from "@/lib/table-link";
 
 const STORE = "tiltwell-v1";
 
@@ -25,6 +26,7 @@ export function TiltWell() {
   const [denied, setDenied] = useState(false);
   const [stalled, setStalled] = useState(false);
   const [phoneLike, setPhoneLike] = useState(false);
+  const [others, setOthers] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -34,6 +36,7 @@ export function TiltWell() {
         navigator.maxTouchPoints > 0 ||
         motionNeedsGesture(),
     );
+    let send: (ball: import("@/lib/table-link").PassedBall) => boolean = () => false;
     const sim = new WellSim({
       canvas,
       getInsets: () => ({
@@ -42,6 +45,7 @@ export function TiltWell() {
         side: 16,
       }),
       onHud: setHud,
+      onPass: (ball) => send(ball),
     });
     try {
       const raw = localStorage.getItem(STORE);
@@ -60,8 +64,17 @@ export function TiltWell() {
       /* keep defaults */
     }
     simRef.current = sim;
+    const link = connectTable({
+      onCount: (count) => {
+        setOthers(count);
+        sim.setHoleOpen(count > 0);
+      },
+      onBall: (ball) => sim.arrive(ball),
+    });
+    send = (ball) => link.send(ball);
     sim.start();
     return () => {
+      link.close();
       sim.stop();
       simRef.current = null;
     };
@@ -119,7 +132,7 @@ export function TiltWell() {
           <div className="min-w-0">
             <h1 className="font-display text-3xl leading-none font-medium tracking-tight">Tiltwell</h1>
             <p className="mt-2 max-w-72 text-sm leading-snug text-muted">
-              Tip any edge down. Left, right, top, or bottom.
+              Tip a ball into the top-left hole. It rolls out on another phone.
             </p>
           </div>
           <p className="pointer-events-auto shrink-0 rounded-full border border-line bg-surface/90 px-3 py-2 text-sm font-medium text-brass tabular-nums">
@@ -189,7 +202,9 @@ export function TiltWell() {
 
           <label className="mt-3 flex flex-col gap-1">
             <span className="flex items-center justify-between text-xs text-muted">
-              <span>{hud.count} balls · {hud.source === "phone" ? "phone gyro" : "tilt your phone"}</span>
+              <span>
+                {hud.count} balls · {others > 0 ? `hole open · ${others} phone${others === 1 ? "" : "s"}` : "hole waiting"}
+              </span>
               <span className="text-fg tabular-nums">Bounce {Math.round(bounce * 100)}</span>
             </span>
             <input
