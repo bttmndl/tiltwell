@@ -166,9 +166,9 @@ export function renderWebManifest(hostHeader) {
       id: "/",
       start_url: "/",
       scope: "/",
-      display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
+      display: "fullscreen",
+      background_color: "#101412",
+      theme_color: "#101412",
       icons: [
         {
           src: "/__grok/icon-180.png",
@@ -184,19 +184,20 @@ export function renderWebManifest(hostHeader) {
 
 export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
   return [
-    // Standalone display comes from the manifest ("display": "standalone");
-    // the legacy *-web-app-capable metas it replaces are deliberately absent.
+    // Fullscreen when the site is saved to the home screen.
     ["manifest", '<link rel="manifest" href="/__grok/manifest.webmanifest">'],
     ["apple-touch-icon", '<link rel="apple-touch-icon" href="/__grok/icon-180.png">'],
+    ["mobile-web-app-capable", '<meta name="mobile-web-app-capable" content="yes">'],
+    ["apple-mobile-web-app-capable", '<meta name="apple-mobile-web-app-capable" content="yes">'],
     [
       "apple-mobile-web-app-title",
       `<meta name="apple-mobile-web-app-title" content="${escapeHtml(appName)}">`,
     ],
     [
       "apple-mobile-web-app-status-bar-style",
-      '<meta name="apple-mobile-web-app-status-bar-style" content="black">',
+      '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
     ],
-    ["theme-color", '<meta name="theme-color" content="#000000">'],
+    ["theme-color", '<meta name="theme-color" content="#101412">'],
   ];
 }
 

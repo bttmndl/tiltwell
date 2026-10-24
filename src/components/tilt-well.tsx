@@ -25,7 +25,15 @@ export function TiltWell() {
     send = (ball) => link.send(ball);
     sim.start();
 
+    const goFull = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element };
+      if (document.fullscreenElement || doc.webkitFullscreenElement) return;
+      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+      const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+      if (req) void Promise.resolve(req()).catch(() => {});
+    };
     const ask = () => {
+      goFull();
       if (gyroLock.current) return;
       gyroLock.current = true;
       sim.unlock();
@@ -53,7 +61,7 @@ export function TiltWell() {
   }, []);
 
   return (
-    <main className="relative h-dvh w-full overflow-hidden bg-[#101412]">
+    <main className="fixed inset-0 h-[100dvh] w-full overflow-hidden bg-[#101412]">
       <canvas
         ref={canvasRef}
         className="absolute inset-0 h-full w-full touch-none"
