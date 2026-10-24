@@ -32,7 +32,7 @@ export function connectTable(handlers: {
       spin: Number(ball.spin) || 0,
       speed: Number(ball.speed) || 240,
       angle: Number(ball.angle) || 0,
-      side: ball.side === "right" ? "right" : "left",
+      side: ball.side === "right" ? "left" : "right",
     });
   };
 
