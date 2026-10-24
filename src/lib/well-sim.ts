@@ -1056,7 +1056,7 @@ export class WellSim {
     if (this.neutralBeta == null) this.neutralBeta = pitch;
     const delta = pitch - this.neutralBeta;
     this.targetSensorX = Math.sin(clamp(roll, -55, 55) * DEG) * 1.2;
-    this.targetSensorY = -Math.sin(clamp(delta, -55, 55) * DEG) * 1.2;
+    this.targetSensorY = Math.sin(clamp(delta, -55, 55) * DEG) * 1.2;
     this.motionMode = true;
     this.useDevice = true;
     this.orientLive = true;
