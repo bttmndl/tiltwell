@@ -139,6 +139,7 @@ export class WellSim {
   private baseGamma: number | null = null;
   private baseBeta: number | null = null;
   private orientLive = false;
+  private sensorHits = 0;
   private gyroGamma = 0;
   private gyroBeta = 0;
   private lastGyroStamp = 0;
@@ -255,9 +256,11 @@ export class WellSim {
     this.gyroGamma = 0;
     this.gyroBeta = 0;
     this.lastGyroStamp = 0;
-    this.baseGamma = null;
-    this.baseBeta = null;
     this.listenSensors();
+  }
+
+  isTracking() {
+    return this.sensorHits > 0;
   }
 
   addBall(x?: number, y?: number) {
@@ -1028,69 +1031,71 @@ export class WellSim {
 
   private listenSensors() {
     this.silenceSensors();
-    window.addEventListener("devicemotion", this.onMotion, true);
-    window.addEventListener("deviceorientation", this.onOrient, true);
-    window.addEventListener("deviceorientationabsolute", this.onOrient, true);
-    this.startGravitySensor();
+    window.addEventListener("deviceorientation", this.onOrient);
+    window.addEventListener("deviceorientationabsolute", this.onOrient);
+    window.addEventListener("devicemotion", this.onMotion);
   }
 
   private silenceSensors() {
-    window.removeEventListener("devicemotion", this.onMotion, true);
-    window.removeEventListener("deviceorientation", this.onOrient, true);
-    window.removeEventListener("deviceorientationabsolute", this.onOrient, true);
+    window.removeEventListener("deviceorientation", this.onOrient);
+    window.removeEventListener("deviceorientationabsolute", this.onOrient);
+    window.removeEventListener("devicemotion", this.onMotion);
     this.gravitySensor?.stop();
     this.gravitySensor = null;
   }
 
-  private pushPlane(devX: number, devY: number) {
-    let mag = Math.hypot(devX, devY);
-    if (!Number.isFinite(mag) || mag < 0.25) return;
-    if (mag > 3) {
-      devX /= 9.81;
-      devY /= 9.81;
-      mag /= 9.81;
+  private applyTilt(rollDeg: number, pitchDeg: number) {
+    const angle = ((screenAngle() % 360) + 360) % 360;
+    let roll = rollDeg;
+    let pitch = pitchDeg;
+    if (angle === 90) {
+      roll = pitchDeg;
+      pitch = -rollDeg;
+    } else if (angle === 270) {
+      roll = -pitchDeg;
+      pitch = rollDeg;
+    } else if (angle === 180) {
+      roll = -rollDeg;
+      pitch = -pitchDeg;
     }
-    const screen = toScreen(devX, devY, screenAngle());
-    const slen = Math.hypot(screen.x, screen.y) || 1;
-    const plane = Math.min(1.2, slen);
-    this.targetSensorX = (screen.x / slen) * plane;
-    this.targetSensorY = (screen.y / slen) * plane;
+    this.targetSensorX = Math.sin(clamp(roll, -75, 75) * DEG) * 2.6;
+    const down = Math.sin(clamp(pitch, -35, 125) * DEG);
+    this.targetSensorY = down > 0.2 ? down : 0.55;
     this.motionMode = true;
     this.useDevice = true;
-    this.deviceArmed = true;
     this.orientLive = true;
+    this.deviceArmed = true;
+    this.sensorHits += 1;
     this.lastDeviceEvent = performance.now();
   }
 
-  private startGravitySensor() {
-    const Ctor = (
-      window as unknown as {
-        GravitySensor?: new (options: { frequency: number }) => {
-          x: number;
-          y: number;
-          start: () => void;
-          stop: () => void;
-          addEventListener: (type: string, fn: () => void) => void;
-        };
+  private onOrient = (e: DeviceOrientationEvent) => {
+    if (this.ignoreSensor) return;
+    if (e.gamma == null || e.beta == null) return;
+    if (Math.abs(e.gamma) < 0.35 && Math.abs(e.beta) < 0.35) return;
+    this.applyTilt(e.gamma, e.beta);
+  };
+
+  private onMotion = (e: DeviceMotionEvent) => {
+    if (this.ignoreSensor || this.orientLive) return;
+    const reading = e.accelerationIncludingGravity;
+    if (reading && reading.x != null && reading.y != null) {
+      const mag = Math.hypot(reading.x, reading.y);
+      const unit = mag > 3 ? 9.81 : 1;
+      const x = -reading.x / unit;
+      const y = -reading.y / unit;
+      if (Math.hypot(x, y) > 0.2) {
+        const screen = toScreen(x, y, screenAngle());
+        const roll = (Math.asin(clamp(screen.x, -1, 1)) * 180) / Math.PI;
+        const pitch = (Math.asin(clamp(screen.y, -1, 1)) * 180) / Math.PI;
+        this.applyTilt(roll, pitch > 8 ? pitch : 50);
+        return;
       }
-    ).GravitySensor;
-    if (!Ctor) return;
-    try {
-      const sensor = new Ctor({ frequency: 60 });
-      sensor.addEventListener("reading", () => {
-        if (this.ignoreSensor) return;
-        if (!Number.isFinite(sensor.x) || !Number.isFinite(sensor.y)) return;
-        this.pushPlane(-sensor.x, -sensor.y);
-      });
-      sensor.start();
-      this.gravitySensor = sensor;
-    } catch {
-      this.gravitySensor = null;
     }
-  }
+    this.integrateGyro(e);
+  };
 
   private integrateGyro(e: DeviceMotionEvent) {
-    if (this.motionMode || this.orientLive) return;
     const rate = e.rotationRate;
     if (!rate || rate.gamma == null || rate.beta == null) return;
     const stamp = e.timeStamp || performance.now();
@@ -1102,46 +1107,10 @@ export class WellSim {
     this.gyroGamma = clamp(this.gyroGamma + gammaRate * dt, -75, 75);
     this.gyroBeta = clamp(this.gyroBeta + betaRate * dt, -70, 70);
     if (Math.abs(this.gyroGamma) < 0.7 && Math.abs(this.gyroBeta) < 0.7) return;
-    this.useDevice = true;
-    this.deviceArmed = true;
-    this.targetGamma = this.gyroGamma;
-    this.targetBeta = 76 + this.gyroBeta;
-    this.lastDeviceEvent = performance.now();
+    this.applyTilt(this.gyroGamma, 76 + this.gyroBeta);
+    this.orientLive = false;
   }
 
-  private onMotion = (e: DeviceMotionEvent) => {
-    if (this.ignoreSensor) return;
-    const reading = e.accelerationIncludingGravity;
-    if (reading && reading.x != null && reading.y != null) {
-      this.pushPlane(-reading.x, -reading.y);
-    }
-    if (!this.motionMode) this.integrateGyro(e);
-  };
-
-  private onOrient = (e: DeviceOrientationEvent) => {
-    if (this.ignoreSensor || this.motionMode) return;
-    if (e.gamma == null || e.beta == null) return;
-
-    if (!this.orientLive) {
-      const looksHeld = Math.abs(e.beta) > 8 || Math.abs(e.gamma) > 2;
-      if (!looksHeld) {
-        if (this.baseGamma == null || this.baseBeta == null) {
-          this.baseGamma = e.gamma;
-          this.baseBeta = e.beta;
-          return;
-        }
-        const moved = Math.abs(e.gamma - this.baseGamma) + Math.abs(e.beta - this.baseBeta);
-        if (moved < 1.2) return;
-      }
-      this.orientLive = true;
-    }
-
-    this.useDevice = true;
-    this.deviceArmed = true;
-    this.targetGamma = e.gamma;
-    this.targetBeta = e.beta;
-    this.lastDeviceEvent = performance.now();
-  };
 }
 
 declare global {

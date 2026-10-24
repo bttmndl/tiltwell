@@ -23,6 +23,7 @@ export function TiltWell() {
   const [bounce, setBounce] = useState(0.8);
   const [muted, setMuted] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const [phoneLike, setPhoneLike] = useState(false);
 
   useEffect(() => {
@@ -70,14 +71,30 @@ export function TiltWell() {
     const sim = simRef.current;
     if (!sim || gyroLock.current) return;
     gyroLock.current = true;
-    sim.unlock();
-    void sim.requestPermission().then((ok) => {
+    const DOE = DeviceOrientationEvent as unknown as {
+      requestPermission?: () => Promise<string>;
+    };
+    const DME = DeviceMotionEvent as unknown as {
+      requestPermission?: () => Promise<string>;
+    };
+    const pending: Promise<string>[] = [];
+    if (typeof DOE.requestPermission === "function") pending.push(DOE.requestPermission());
+    if (typeof DME.requestPermission === "function") pending.push(DME.requestPermission());
+    const finish = (ok: boolean) => {
       setDenied(!ok);
       if (ok) sim.armPhone();
-    }).finally(() => {
       window.setTimeout(() => {
+        setStalled(!sim.isTracking());
         gyroLock.current = false;
-      }, 500);
+      }, 1600);
+    };
+    if (pending.length === 0) {
+      sim.armPhone();
+      finish(true);
+      return;
+    }
+    void Promise.all(pending.map((task) => task.catch(() => "denied"))).then((results) => {
+      finish(results.some((result) => result === "granted"));
     });
   }
 
@@ -101,8 +118,8 @@ export function TiltWell() {
         <div className="flex items-start justify-between gap-3 pt-4">
           <div className="min-w-0">
             <h1 className="font-display text-3xl leading-none font-medium tracking-tight">Tiltwell</h1>
-            <p className="mt-2 max-w-64 text-sm leading-snug text-muted">
-              Tap Use phone gyro, then tip the phone left.
+            <p className="mt-2 max-w-72 text-sm leading-snug text-muted">
+              Tip the phone itself. A little left, and the balls fall left.
             </p>
           </div>
           <p className="pointer-events-auto shrink-0 rounded-full border border-line bg-surface/90 px-3 py-2 text-sm font-medium text-brass tabular-nums">
@@ -113,15 +130,23 @@ export function TiltWell() {
 
       <footer ref={footerRef} className="dock-safe pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3">
         <div className="pointer-events-auto mb-3 rounded-3xl border border-line bg-surface/90 p-3 backdrop-blur-md">
+          {stalled ? (
+            <p className="mb-3 text-sm leading-snug text-muted">
+              This view is not receiving tilt. Open{" "}
+              <a className="text-brass underline" href="https://tiltwell.vercel.app">
+                tiltwell.vercel.app
+              </a>{" "}
+              in Safari or Chrome, tap Use phone gyro, and allow motion.
+            </p>
+          ) : null}
           {phoneLike && hud.source !== "phone" ? (
             <button
               type="button"
               className="mb-3 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-brass text-sm font-medium text-bg"
-              onTouchEnd={(event) => {
-                event.preventDefault();
+              onClick={() => {
+                simRef.current?.unlock();
                 askGyro();
               }}
-              onClick={askGyro}
             >
               <Smartphone className="size-4" aria-hidden="true" />
               {denied ? "Try phone gyro again" : "Use phone gyro"}
