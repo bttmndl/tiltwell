@@ -275,10 +275,9 @@ export class WellSim {
   arrive(ball: PassedBall) {
     if (!this.haveLayout) return;
     if (this.balls.length >= MAX_BALLS + 6) return;
-    const h = this.hole();
     const r = this.baseRadius();
-    const speed = clamp(ball.speed, 160, 460);
-    const made = this.makeBall(h.x + h.r * 0.35, h.y + h.r * 0.35, r, 0, speed * 0.72, speed * 0.62);
+    const speed = clamp(ball.speed, 220, 520);
+    const made = this.makeBall(-r * 0.15, -r * 0.15, r, 0, speed * 0.78, speed * 0.68);
     made.spin = ball.spin;
     made.angle = ball.angle;
     made.guard = 0.85;
@@ -657,48 +656,22 @@ export class WellSim {
     }
   }
 
-  private hole() {
-    const r = Math.max(26, this.baseRadius() * 1.35);
-    return {
-      x: this.bounds.left + r * 0.62,
-      y: this.bounds.top + r * 0.62,
-      r,
-    };
-  }
-
-  private inMouth(b: Ball) {
-    const h = this.hole();
-    return Math.hypot(b.x - h.x, b.y - h.y) < h.r * 0.92;
+  private nearTrayCorner(b: Ball) {
+    return b.x < this.bounds.left + b.r * 1.7 && b.y < this.bounds.top + b.r * 1.7;
   }
 
   private drain(dt: number) {
-    const h = this.hole();
     const next: Ball[] = [];
     for (const b of this.balls) {
       if (b.guard > 0) b.guard = Math.max(0, b.guard - dt);
-      const dist = Math.hypot(b.x - h.x, b.y - h.y);
-      if (!this.holeOpen && b.guard <= 0 && dist < h.r + b.r * 0.08) {
-        const nx = (b.x - h.x) / (dist || 1);
-        const ny = (b.y - h.y) / (dist || 1);
-        const overlap = h.r + b.r * 0.02 - dist;
-        if (overlap > 0) {
-          b.x += nx * overlap;
-          b.y += ny * overlap;
-        }
-        const vn = b.vx * nx + b.vy * ny;
-        if (vn < 0) {
-          b.vx -= (1 + this.restitution * 0.45) * vn * nx;
-          b.vy -= (1 + this.restitution * 0.45) * vn * ny;
-        }
-      }
-      const falling = b.sink > 0 || (this.holeOpen && b.guard <= 0 && dist < h.r * 0.72);
-      if (!falling) {
+      const leaving = b.sink > 0 || (this.holeOpen && b.guard <= 0 && this.nearTrayCorner(b));
+      if (!leaving) {
         next.push(b);
         continue;
       }
-      b.sink = Math.min(1, (b.sink || 0.01) + dt / 0.32);
-      b.x += (h.x - b.x) * Math.min(1, dt * 9);
-      b.y += (h.y - b.y) * Math.min(1, dt * 9);
+      b.sink = Math.min(1, (b.sink || 0.01) + dt / 0.28);
+      b.x += (-b.r - b.x) * Math.min(1, dt * 7);
+      b.y += (-b.r - b.y) * Math.min(1, dt * 7);
       b.vx *= 0.5;
       b.vy *= 0.5;
       if (b.sink < 1) {
@@ -709,8 +682,8 @@ export class WellSim {
       if (!sent) {
         b.sink = 0;
         b.guard = 0.5;
-        b.x = h.x + h.r * 0.95;
-        b.y = h.y + h.r * 0.95;
+        b.x = b.r * 2.6;
+        b.y = b.r * 2.6;
         b.vx = 240;
         b.vy = 190;
         next.push(b);
@@ -723,7 +696,7 @@ export class WellSim {
     const { left, top, right, bottom } = this.bounds;
     for (const b of this.balls) {
       if (b.sink > 0) continue;
-      const mouth = this.holeOpen && this.inMouth(b);
+      const mouth = this.holeOpen && (b.guard > 0 || b.sink > 0 || this.nearTrayCorner(b));
       if (!mouth && b.x < left + b.r) {
         b.x = left + b.r;
         this.bounceWall(b, 1, 0, e, dt, friction);
@@ -901,12 +874,8 @@ export class WellSim {
     ctx.fillStyle = sheen;
     ctx.fillRect(b.left, b.top, rw, 80);
 
-    this.drawHole();
     this.drawLowEdge();
     this.drawPlumb();
-
-    const order = this.balls.slice().sort((p, q) => p.x * dx + p.y * dy - (q.x * dx + q.y * dy));
-    for (const ball of order) this.drawBall(ball, dx, dy);
 
     for (const s of this.sparks) {
       if (s.life <= 0) continue;
@@ -931,29 +900,9 @@ export class WellSim {
     this.rivet(b.right - 16, b.top + 16);
     this.rivet(b.left + 16, b.bottom - 16);
     this.rivet(b.right - 16, b.bottom - 16);
-  }
 
-  private drawHole() {
-    const ctx = this.ctx;
-    const h = this.hole();
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
-    const pit = ctx.createRadialGradient(h.x - h.r * 0.15, h.y - h.r * 0.2, h.r * 0.1, h.x, h.y, h.r);
-    pit.addColorStop(0, "#020302");
-    pit.addColorStop(0.7, "#12100e");
-    pit.addColorStop(1, this.holeOpen ? "#5c4630" : "#2a241c");
-    ctx.fillStyle = pit;
-    ctx.fill();
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = this.holeOpen ? "#d4b072" : "#6d5a40";
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r * 0.72, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(0,0,0,0.65)";
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    ctx.restore();
+    const order = this.balls.slice().sort((p, q) => p.x * dx + p.y * dy - (q.x * dx + q.y * dy));
+    for (const ball of order) this.drawBall(ball, dx, dy);
   }
 
   private drawLowEdge() {

@@ -129,10 +129,10 @@ export function TiltWell() {
 
       <header ref={headerRef} className="hud-safe pointer-events-none absolute inset-x-0 top-0 z-10 px-4">
         <div className="flex items-start justify-between gap-3 pt-4">
-          <div className="min-w-0">
+          <div className="min-w-0 pl-10">
             <h1 className="font-display text-3xl leading-none font-medium tracking-tight">Tiltwell</h1>
             <p className="mt-2 max-w-72 text-sm leading-snug text-muted">
-              Tip a ball into the top-left hole. It rolls out on another phone.
+              Tip the phone. A ball that slips off the top-left corner rolls out of the other phone’s corner.
             </p>
           </div>
           <p className="pointer-events-auto shrink-0 rounded-full border border-line bg-surface/90 px-3 py-2 text-sm font-medium text-brass tabular-nums">
@@ -203,7 +203,7 @@ export function TiltWell() {
           <label className="mt-3 flex flex-col gap-1">
             <span className="flex items-center justify-between text-xs text-muted">
               <span>
-                {hud.count} balls · {others > 0 ? `hole open · ${others} phone${others === 1 ? "" : "s"}` : "hole waiting"}
+                {hud.count} balls{others > 0 ? ` · ${others} phone${others === 1 ? "" : "s"}` : ""}
               </span>
               <span className="text-fg tabular-nums">Bounce {Math.round(bounce * 100)}</span>
             </span>
