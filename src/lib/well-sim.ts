@@ -282,8 +282,8 @@ export class WellSim {
     const made = this.makeBall(s * 0.28, s * 0.28, r, 0, speed * 0.74, speed * 0.74);
     made.spin = ball.spin;
     made.angle = ball.angle;
-    made.guard = 0.7;
-    made.sink = 0.92;
+    made.guard = 0.55;
+    made.sink = 0;
     this.balls.push(made);
   }
 
@@ -661,7 +661,7 @@ export class WellSim {
   }
 
   private holeSize() {
-    return Math.max(132, this.baseRadius() * 4.8);
+    return this.baseRadius() * 2.35;
   }
 
   private overLip(b: Ball) {
@@ -691,11 +691,11 @@ export class WellSim {
         next.push(b);
         continue;
       }
-      b.sink = Math.min(1, (b.sink || 0.04) + dt / 0.22);
-      b.x += (4 - b.x) * Math.min(1, dt * 9);
-      b.y += (4 - b.y) * Math.min(1, dt * 9);
-      b.vx *= 0.42;
-      b.vy *= 0.42;
+      b.sink = Math.min(1, (b.sink || 0.04) + dt / 0.36);
+      b.x += (-b.r * 0.45 - b.x) * Math.min(1, dt * 3.2);
+      b.y += (-b.r * 0.45 - b.y) * Math.min(1, dt * 3.2);
+      b.vx *= 0.9;
+      b.vy *= 0.9;
       if (b.sink < 1) {
         next.push(b);
         continue;
@@ -855,43 +855,11 @@ export class WellSim {
     ctx.fillStyle = "#101412";
     ctx.fillRect(0, 0, w, h);
 
-    this.drawHole();
-
     const mag = Math.hypot(this.gx, this.gy) || 1;
     const dx = this.gx / mag;
     const dy = this.gy / mag;
     const order = this.balls.slice().sort((p, q) => p.x * dx + p.y * dy - (q.x * dx + q.y * dy));
     for (const ball of order) this.drawBall(ball, dx, dy);
-  }
-
-  private drawHole() {
-    const ctx = this.ctx;
-    const s = this.holeSize();
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(s, 0);
-    ctx.lineTo(0, s);
-    ctx.closePath();
-    const pit = ctx.createLinearGradient(0, 0, s, s);
-    pit.addColorStop(0, "#000000");
-    pit.addColorStop(0.72, "#070808");
-    pit.addColorStop(1, "#1a140e");
-    ctx.fillStyle = pit;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(s, 0);
-    ctx.lineTo(0, s);
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = "#2a2118";
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(s - 7, 5);
-    ctx.lineTo(5, s - 7);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(212,176,114,0.85)";
-    ctx.stroke();
-    ctx.restore();
   }
 
   private drawLowEdge() {
@@ -963,7 +931,6 @@ export class WellSim {
       ctx.scale(1 - b.squash * 0.16, 1 + b.squash * 0.09);
       ctx.rotate(-axis);
     }
-    if (b.sink > 0) ctx.scale(1 - b.sink * 0.82, 1 - b.sink * 0.82);
 
     const r = b.r;
     const grd = ctx.createRadialGradient(-r * 0.28, -r * 0.32, r * 0.05, 0, 0, r * 1.05);
