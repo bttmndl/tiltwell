@@ -275,12 +275,14 @@ export class WellSim {
   arrive(ball: PassedBall) {
     if (!this.haveLayout) return;
     if (this.balls.length >= MAX_BALLS + 6) return;
+    const h = this.holeCenter();
     const r = this.baseRadius();
-    const speed = clamp(ball.speed, 220, 520);
-    const made = this.makeBall(-r * 0.15, -r * 0.15, r, 0, speed * 0.78, speed * 0.68);
+    const speed = clamp(ball.speed, 180, 420);
+    const made = this.makeBall(h.x, h.y, r, 0, speed * 0.72, speed * 0.62);
     made.spin = ball.spin;
     made.angle = ball.angle;
-    made.guard = 0.85;
+    made.guard = 0.7;
+    made.sink = 0.92;
     this.balls.push(made);
   }
 
@@ -656,22 +658,35 @@ export class WellSim {
     }
   }
 
+  private holeCenter() {
+    const r = Math.max(36, this.baseRadius() * 1.6);
+    return { x: r * 0.78, y: r * 0.78, r };
+  }
+
   private nearTrayCorner(b: Ball) {
-    return b.x < this.bounds.left + b.r * 1.7 && b.y < this.bounds.top + b.r * 1.7;
+    const h = this.holeCenter();
+    return Math.hypot(b.x - h.x, b.y - h.y) < h.r * 0.62;
   }
 
   private drain(dt: number) {
+    const h = this.holeCenter();
     const next: Ball[] = [];
     for (const b of this.balls) {
-      if (b.guard > 0) b.guard = Math.max(0, b.guard - dt);
-      const leaving = b.sink > 0 || (this.holeOpen && b.guard <= 0 && this.nearTrayCorner(b));
+      if (b.guard > 0) {
+        b.guard = Math.max(0, b.guard - dt);
+        b.sink = Math.max(0, b.sink - dt / 0.34);
+        if (b.guard <= 0) b.sink = 0;
+        next.push(b);
+        continue;
+      }
+      const leaving = b.sink > 0 || (this.holeOpen && this.nearTrayCorner(b));
       if (!leaving) {
         next.push(b);
         continue;
       }
       b.sink = Math.min(1, (b.sink || 0.01) + dt / 0.28);
-      b.x += (-b.r - b.x) * Math.min(1, dt * 7);
-      b.y += (-b.r - b.y) * Math.min(1, dt * 7);
+      b.x += (h.x - b.x) * Math.min(1, dt * 8);
+      b.y += (h.y - b.y) * Math.min(1, dt * 8);
       b.vx *= 0.5;
       b.vy *= 0.5;
       if (b.sink < 1) {
@@ -681,11 +696,11 @@ export class WellSim {
       const sent = this.onPass?.({ spin: b.spin, speed: Math.hypot(b.vx, b.vy) + 220, angle: b.angle }) ?? false;
       if (!sent) {
         b.sink = 0;
-        b.guard = 0.5;
-        b.x = b.r * 2.6;
-        b.y = b.r * 2.6;
-        b.vx = 240;
-        b.vy = 190;
+        b.guard = 0.55;
+        b.x = h.x + h.r * 0.9;
+        b.y = h.y + h.r * 0.9;
+        b.vx = 220;
+        b.vy = 180;
         next.push(b);
       }
     }
@@ -825,84 +840,34 @@ export class WellSim {
     const ctx = this.ctx;
     const w = this.cssW;
     const h = this.cssH;
-    this.ensureFelt();
-
-    const bg = ctx.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, "#1b2420");
-    bg.addColorStop(1, "#0c100e");
-    ctx.fillStyle = bg;
+    ctx.fillStyle = "#101412";
     ctx.fillRect(0, 0, w, h);
 
-    const b = this.bounds;
-    const rw = b.right - b.left;
-    const rh = b.bottom - b.top;
-    const radius = 28;
+    this.drawHole();
 
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.45)";
-    ctx.shadowBlur = 28;
-    ctx.shadowOffsetY = 12;
-    roundRect(ctx, b.left, b.top, rw, rh, radius);
-    ctx.fillStyle = "#121815";
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    roundRect(ctx, b.left, b.top, rw, rh, radius);
-    ctx.clip();
-    if (this.felt) {
-      ctx.fillStyle = this.felt;
-      ctx.fillRect(b.left, b.top, rw, rh);
-    }
-
-    const cx = (b.left + b.right) / 2;
-    const cy = (b.top + b.bottom) / 2;
     const mag = Math.hypot(this.gx, this.gy) || 1;
     const dx = this.gx / mag;
     const dy = this.gy / mag;
-    const reach = Math.hypot(rw, rh) * 0.55;
-    const wash = ctx.createLinearGradient(cx - dx * reach, cy - dy * reach, cx + dx * reach, cy + dy * reach);
-    wash.addColorStop(0, "rgba(244,239,230,0.07)");
-    wash.addColorStop(0.48, "rgba(0,0,0,0)");
-    wash.addColorStop(1, "rgba(0,0,0,0.34)");
-    ctx.fillStyle = wash;
-    ctx.fillRect(b.left, b.top, rw, rh);
-
-    const sheen = ctx.createLinearGradient(0, b.top, 0, b.top + 80);
-    sheen.addColorStop(0, "rgba(255,255,255,0.06)");
-    sheen.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = sheen;
-    ctx.fillRect(b.left, b.top, rw, 80);
-
-    this.drawLowEdge();
-    this.drawPlumb();
-
-    for (const s of this.sparks) {
-      if (s.life <= 0) continue;
-      ctx.globalAlpha = Math.max(0, s.life / s.max) * 0.85;
-      ctx.fillStyle = "#f4efe6";
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, 1.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    ctx.restore();
-
-    roundRect(ctx, b.left, b.top, rw, rh, radius);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#c6a15b";
-    ctx.stroke();
-    roundRect(ctx, b.left + 5, b.top + 5, rw - 10, rh - 10, radius - 4);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(255,236,206,0.28)";
-    ctx.stroke();
-
-    this.rivet(b.right - 16, b.top + 16);
-    this.rivet(b.left + 16, b.bottom - 16);
-    this.rivet(b.right - 16, b.bottom - 16);
-
     const order = this.balls.slice().sort((p, q) => p.x * dx + p.y * dy - (q.x * dx + q.y * dy));
     for (const ball of order) this.drawBall(ball, dx, dy);
+  }
+
+  private drawHole() {
+    const ctx = this.ctx;
+    const h = this.holeCenter();
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+    const pit = ctx.createRadialGradient(h.x - h.r * 0.2, h.y - h.r * 0.25, h.r * 0.08, h.x, h.y, h.r);
+    pit.addColorStop(0, "#000000");
+    pit.addColorStop(0.72, "#141210");
+    pit.addColorStop(1, this.holeOpen ? "#6a5030" : "#2c261e");
+    ctx.fillStyle = pit;
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = this.holeOpen ? "#c6a15b" : "#5c4c36";
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawLowEdge() {
