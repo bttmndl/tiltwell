@@ -20,7 +20,7 @@ export function TiltWell() {
     count: 0,
     source: "hand",
   });
-  const [bounce, setBounce] = useState(0.8);
+  const [bounce, setBounce] = useState(0.58);
   const [muted, setMuted] = useState(false);
   const [denied, setDenied] = useState(false);
   const [stalled, setStalled] = useState(false);
@@ -119,7 +119,7 @@ export function TiltWell() {
           <div className="min-w-0">
             <h1 className="font-display text-3xl leading-none font-medium tracking-tight">Tiltwell</h1>
             <p className="mt-2 max-w-72 text-sm leading-snug text-muted">
-              Tip the phone itself. A little left, and the balls fall left.
+              Tip any edge down. Left, right, top, or bottom.
             </p>
           </div>
           <p className="pointer-events-auto shrink-0 rounded-full border border-line bg-surface/90 px-3 py-2 text-sm font-medium text-brass tabular-nums">

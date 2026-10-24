@@ -43,7 +43,7 @@ const PALETTE: Palette[] = [
 
 const BALL_COUNT = 11;
 const MAX_BALLS = 12;
-const GRAVITY = 2350;
+const GRAVITY = 1180;
 const DEG = Math.PI / 180;
 const STEP = 1 / 120;
 
@@ -104,7 +104,7 @@ export type WellSimOptions = {
 };
 
 export class WellSim {
-  restitution = 0.8;
+  restitution = 0.58;
   muted = false;
 
   private readonly canvas: HTMLCanvasElement;
@@ -139,6 +139,8 @@ export class WellSim {
   private baseGamma: number | null = null;
   private baseBeta: number | null = null;
   private orientLive = false;
+  private lastPitch = 55;
+  private neutralBeta: number | null = null;
   private sensorHits = 0;
   private gyroGamma = 0;
   private gyroBeta = 0;
@@ -294,17 +296,9 @@ export class WellSim {
   }
 
   level() {
-    const raw = this.rawScreen();
-    const mag = Math.hypot(raw.x, raw.y);
-    if (mag < 0.08) {
-      this.screenBias = 0;
-      if (!this.useDevice) {
-        this.targetGamma = 0;
-        this.targetBeta = 76;
-      }
-      return;
-    }
-    this.screenBias = Math.PI / 2 - Math.atan2(raw.y, raw.x);
+    this.neutralBeta = this.lastPitch;
+    this.screenBias = 0;
+    this.recomputeGravity();
   }
 
   private setLean(deg: number) {
@@ -475,7 +469,7 @@ export class WellSim {
 
   private tick(dt: number) {
     if (this.motionMode && this.useDevice) {
-      const k = 1 - Math.exp(-14 * dt);
+      const k = 1 - Math.exp(-6 * dt);
       this.sensorX += (this.targetSensorX - this.sensorX) * k;
       this.sensorY += (this.targetSensorY - this.sensorY) * k;
     } else if (this.handControl()) {
@@ -505,16 +499,16 @@ export class WellSim {
       }
     }
 
-    const drag = Math.exp(-0.22 * dt);
+    const drag = Math.exp(-0.7 * dt);
     for (const b of this.balls) {
       b.vx += this.gx * dt;
       b.vy += this.gy * dt;
       b.vx *= drag;
       b.vy *= drag;
       const sp = Math.hypot(b.vx, b.vy);
-      if (sp > 2800) {
-        b.vx = (b.vx / sp) * 2800;
-        b.vy = (b.vy / sp) * 2800;
+      if (sp > 980) {
+        b.vx = (b.vx / sp) * 980;
+        b.vy = (b.vy / sp) * 980;
       }
       b.x += b.vx * dt;
       b.y += b.vy * dt;
@@ -549,7 +543,7 @@ export class WellSim {
 
   private rawScreen() {
     if (this.useDevice && this.motionMode) {
-      return { x: this.sensorX * 1.85, y: this.sensorY };
+      return { x: this.sensorX, y: this.sensorY };
     }
     if (this.useDevice) {
       const dev = deviceGravity(this.gamma, this.beta);
@@ -613,7 +607,7 @@ export class WellSim {
         const rv = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
         if (rv < 0) {
           const impact = -rv;
-          const useE = impact < 48 ? 0 : e;
+          const useE = impact < 36 ? 0 : e / (1 + impact / 720);
           const j = (-(1 + useE) * rv) / inv;
           a.vx -= (j * nx) * invA;
           a.vy -= (j * ny) * invA;
@@ -633,7 +627,7 @@ export class WellSim {
             const tx = -ny;
             const ty = nx;
             const tv = (b.vx - a.vx) * tx + (b.vy - a.vy) * ty;
-            const keep = Math.exp(-1.1 * dt);
+            const keep = Math.exp(-4.5 * dt);
             const change = tv * (keep - 1);
             a.vx -= change * tx * (invA / inv);
             a.vy -= change * ty * (invA / inv);
@@ -669,7 +663,7 @@ export class WellSim {
     const vn = b.vx * nx + b.vy * ny;
     if (vn < 0) {
       const impact = -vn;
-      const useE = impact < 52 ? 0 : e;
+      const useE = impact < 40 ? 0 : e / (1 + impact / 640);
       b.vx -= (1 + useE) * vn * nx;
       b.vy -= (1 + useE) * vn * ny;
       if (impact > 80) {
@@ -684,7 +678,7 @@ export class WellSim {
     const tx = -ny;
     const ty = nx;
     const vt = b.vx * tx + b.vy * ty;
-    const keep = Math.exp(-2.3 * dt);
+    const keep = Math.exp(-7.5 * dt);
     b.vx += vt * (keep - 1) * tx;
     b.vy += vt * (keep - 1) * ty;
   }
@@ -1058,9 +1052,11 @@ export class WellSim {
       roll = -rollDeg;
       pitch = -pitchDeg;
     }
-    this.targetSensorX = Math.sin(clamp(roll, -75, 75) * DEG) * 2.6;
-    const down = Math.sin(clamp(pitch, -35, 125) * DEG);
-    this.targetSensorY = down > 0.2 ? down : 0.55;
+    this.lastPitch = pitch;
+    if (this.neutralBeta == null) this.neutralBeta = pitch;
+    const delta = pitch - this.neutralBeta;
+    this.targetSensorX = Math.sin(clamp(roll, -55, 55) * DEG) * 1.2;
+    this.targetSensorY = -Math.sin(clamp(delta, -55, 55) * DEG) * 1.2;
     this.motionMode = true;
     this.useDevice = true;
     this.orientLive = true;
