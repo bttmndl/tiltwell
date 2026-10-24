@@ -113,7 +113,6 @@ export class WellSim {
   private readonly onHud: WellSimOptions["onHud"];
   private readonly onPass: WellSimOptions["onPass"];
   private holeOpen = false;
-  private pocket: { ball: PassedBall; age: number }[] = [];
 
   private balls: Ball[] = [];
   private sparks: Spark[] = [];
@@ -701,22 +700,9 @@ export class WellSim {
         continue;
       }
       const payload = { spin: b.spin, speed: Math.max(220, Math.hypot(b.vx, b.vy) + 260), angle: b.angle };
-      if (!this.onPass?.(payload)) this.pocket.push({ ball: payload, age: 0 });
+      this.onPass?.(payload);
     }
     this.balls = next;
-    this.flushPocket(dt);
-  }
-
-  private flushPocket(dt: number) {
-    if (this.pocket.length === 0) return;
-    const stay: { ball: PassedBall; age: number }[] = [];
-    for (const item of this.pocket) {
-      item.age += dt;
-      if (this.onPass?.(item.ball)) continue;
-      if (item.age > 1.15) this.arrive(item.ball);
-      else stay.push(item);
-    }
-    this.pocket = stay;
   }
 
   private solveWalls(e: number, dt: number, friction: boolean) {
